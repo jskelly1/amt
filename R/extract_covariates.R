@@ -167,25 +167,60 @@ extract_covar_var_time_base <- function(
   t_covar <- as.numeric(as.POSIXct(terra::time(covariates)))
   t_obs <- as.numeric(as.POSIXct(t))
 
-  # Fun to find closest point
-  which_rast <- function(t_diffs, where, max_diff) {
-    wr <- if (when == "after") {
-      which.min(t_diffs[t_diffs >= 0])
-    } else if (when == "before") {
-      which.min(abs(t_diffs[t_diffs <= 0])) + sum(t_diffs > 0)
-    } else if (when == "any") {
-      which.min(abs(t_diffs))
-    }
-    if (length(wr) == 0) {
-      NA
-    } else if (max_diff < abs(t_diffs[wr])) {
-      NA
-    } else {
-      wr
-    }
-  }
 
-  wr <- sapply(t_obs, function(x) which_rast(x - t_covar, when, max_diff))
+  wr <- sapply(t_obs, function(x) {
+    t_dist <- t_covar - x
+    which_t_dist <- if (when == "before") {
+      which(t_dist <= 0 & t_dist == max(t_dist[t_dist <= 0]))
+    } else if (when == "after") {
+      which(t_dist >= 0 & t_dist == min(t_dist[t_dist >= 0]))
+    } else if (when == "any") {
+      which.min(abs(t_dist))
+    }
+
+    if (length(which_t_dist) == 1 && abs(t_dist[which_t_dist]) <= max_diff) {
+        which_t_dist
+    } else {
+      NA_integer_
+    }
+  })
+
+  #  which_rast <- function(t_obs, t_covar, max_time, direction = "both") {
+  #    sapply(t_obs, function(t) {
+  #      d <- t_covar - t
+#      keep <- switch(direction,
+#                     before = d <= 0 & abs(d) <= max_time,
+#                     after = d >= 0 & abs(d) <= max_time,
+#                     any = abs(d) <= max_time
+#      )
+#      if (!any(keep)) return(NA_integer_)
+#      which.min(abs(d[keep]))
+#    })
+#
+#  }
+#
+
+
+ #  # Fun to find closest point
+ #  which_rast <- function(t_diffs, where, max_diff) {
+ #    wr <- if (when == "after") {
+ #      which.min(t_diffs[t_diffs <= 0])
+ #    } else if (when == "before") {
+ #      which.min(abs(t_diffs[t_diffs >= 0])) + sum(t_diffs > 0)
+ #    } else if (when == "any") {
+ #      which.min(abs(t_diffs))
+ #    }
+ #
+ #    if (length(wr) == 0) {
+ #      NA
+ #    } else if (max_diff < abs(t_diffs[wr])) {
+ #      NA
+ #    } else {
+ #      wr
+ #    }
+ #  }
+
+  #wr <- sapply(t_obs, function(x) which_rast(x, t_covar, max_diff, when))
   ev <- terra::extract(covariates, cbind(xy), ...)
   cov_val <- ev[cbind(seq_along(wr), wr)]
   return(cov_val)

@@ -119,7 +119,7 @@ vol_base <- function(ud_i, ud_j, type) {
 
 #' @rdname hr_overlaps
 #' @export
-#' @param  which `[character = "consecutive"]` \cr Should only consecutive overlaps be calculated or all combinations?
+#' @param  which `[character = "consecutive"]` \cr Should only consecutive overlaps be calculated or all combinations? Possible values all `all`, `consecutive` and `one_to_all`.
 #' @param  labels `[character=NULL]` \cr Labels for different instances. If `NULL` (the default) numbers will be used.
 hr_overlap.list <- function(
   x, type = "hr", conditional = FALSE,  which = "consecutive", labels = NULL, ...) {
