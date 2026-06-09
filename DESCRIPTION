@@ -47,6 +47,7 @@ Imports:
     survival,
     terra,
     tibble,
+    transport,
     tidyr (>= 1.0.0),
     utils
 Suggests: 
