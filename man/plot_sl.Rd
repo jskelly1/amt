@@ -8,9 +8,23 @@
 \usage{
 plot_sl(x, ...)
 
-\method{plot_sl}{fit_clogit}(x, n = 1000, upper_quantile = 0.99, plot = TRUE, ...)
+\method{plot_sl}{fit_clogit}(
+  x,
+  n = 1000,
+  upper_quantile = 0.99,
+  plot = TRUE,
+  engine = c("base", "ggplot2"),
+  ...
+)
 
-\method{plot_sl}{random_steps}(x, n = 1000, upper_quantile = 0.99, plot = TRUE, ...)
+\method{plot_sl}{random_steps}(
+  x,
+  n = 1000,
+  upper_quantile = 0.99,
+  plot = TRUE,
+  engine = c("base", "ggplot2"),
+  ...
+)
 }
 \arguments{
 \item{x}{\verb{[fit_clogit|random_steps]} \cr A fitted step selection or random steps.}
@@ -22,6 +36,10 @@ plot_sl(x, ...)
 \item{upper_quantile}{\verb{[nummeric(1)=0.99]\{0-1\}} \cr The quantile until where the distribution should be plotted. Typically this will be \code{0.95} or \code{0.99}.}
 
 \item{plot}{\verb{[logical(1)=TRUE]} \cr Indicates if a plot should be drawn or not.}
+
+\item{engine}{\verb{[character(1)="base"]} \cr Plotting engine. \code{"base"} keeps
+the existing base graphics behavior. \code{"ggplot2"} returns a ggplot object and
+requires the optional \code{ggplot2} package.}
 }
 \value{
 A plot of the step-length distribution.
