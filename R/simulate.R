@@ -453,7 +453,7 @@ simulate_path.default <- function(x, ...) {
 #' @export
 #' @rdname simulate_path
 
-simulate_path.redistribution_kernel <- function(daily=F,
+simulate_path.redistribution_kernel <- function(daily=F, simulationstack = NULL,
     x, n.steps = 100, start = x$args$start, verbose = FALSE, ...) {
   
   #this includes barrier_tree, kappa, etc.
