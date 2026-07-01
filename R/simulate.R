@@ -453,7 +453,7 @@ simulate_path.default <- function(x, ...) {
 #' @export
 #' @rdname simulate_path
 
-simulate_path.redistribution_kernel <- function(daily=F, simulationstack = NULL,
+simulate_path.redistribution_kernel <- function(daily=F, simulationstack = NULL, Verbose=F,
     x, n.steps = 100, start = x$args$start, verbose = FALSE, ...) {
   
   #this includes barrier_tree, kappa, etc.
@@ -467,9 +467,7 @@ simulate_path.redistribution_kernel <- function(daily=F, simulationstack = NULL,
   
   
   for (i in 1:n.steps) {
-    
-    #message(i) #added a counter - JS
-    #message(sources(map))
+    if (verbose) message(paste("Step", i))
     
     #update only the start position for the current step
     params$start <- start
