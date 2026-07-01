@@ -273,39 +273,43 @@ kernel_setup <- function(template, max.dist = 100, start, covars) {
 #' @export
 
 redistribution_kernel <- function(
-  x = make_issf_model(),
-  start = make_start(),
-  map,
-  fun = function(xy, map) {
-    extract_covariates(xy, map, where = "both")
-  },
-  covars = NULL,
-  max.dist = get_max_dist(x),
-  n.control = 1e6,
-  n.sample = 1,
-  landscape = "continuous",
-  compensate.movement = landscape == "discrete",
-  normalize = TRUE,
-  interpolate = FALSE,
-  as.rast = FALSE,
-  tolerance.outside = 0) {
-
+    x = make_issf_model(),
+    start = make_start(),
+    map,
+    fun = function(xy, map) {
+      extract_covariates(xy, map, where = "both")
+    },
+    covars = NULL,
+    max.dist = get_max_dist(x),
+    n.control = 1e6,
+    n.sample = 1,
+    landscape = "continuous",
+    compensate.movement = landscape == "discrete",
+    normalize = TRUE,
+    interpolate = FALSE,
+    as.rast = FALSE,
+    tolerance.outside = 0,
+    cross = FALSE,
+    barrier_tree = NULL) {
+  
   arguments <- as.list(environment())
   checkmate::assert_class(start, "sim_start")
-
-
+  
   if (!landscape %in% c("continuous", "discrete")) {
-    stop("Argument `landscape` is invalid. Valid values are 'continuous' or 'discrete'.")
+    stop("Argument `landscape` is invalid. Valid values are 'continuous' or     'discrete'.")
   }
-
-
+  
   if (landscape == "continuous") {
-    xy <- random_steps_simple(start, sl_model = x$sl_,
-                              ta_model = x$ta_, n.control = n.control)
+    xy <- random_steps_simple(
+      start,
+      sl_model = x$sl_,
+      ta_model = x$ta_,
+      n.control = n.control
+    )
   } else {
     xy <- kernel_setup(map, max.dist, start, covars)
   }
-
+  
   # Check for the fraction of steps that is outside the landscape
   bb.map <- as.vector(terra::ext(map))
   fraction.outside <- mean(
@@ -313,23 +317,73 @@ redistribution_kernel <- function(
       xy$y2_ < bb.map["ymin"] | xy$y2_ > bb.map["ymax"]
   )
   if (fraction.outside > tolerance.outside) {
-    warning(paste0(round(fraction.outside * 100, 3),
-                   "% of steps are ending outside the study area but only ",
-                   round(tolerance.outside * 100, 3),
-                   "% is allowed. ",
-                   "Terminating simulations here."))
+    warning(paste0(
+      round(fraction.outside * 100, 3),
+      "% of steps are ending outside the study area but only ",
+      round(tolerance.outside * 100, 3),
+      "% is allowed. ",
+      "Terminating simulations here."
+    ))
     return(NULL) # Make sure something meaningful is returned
   }
-
+  
   # Add time stamp
   xy$t1_ <- start$t_
   xy$t2_ <- start$t_ + start$dt
-
+  
   # Extract covariate values
   xy <- fun(xy, map)
-
+  
   w <- ssf_weights(xy, x, compensate.movement = compensate.movement)
-
+  
+  #================================================================
+  #This is the custom part: if cross = TRUE, use kappa to adjust weights
+  # for each step that crosses a barrier
+  #================================================================
+  
+  #cross is a parameter to use this section of the function...
+  if (cross == TRUE) {
+    
+    #make lines for each step
+    dt <- data.table::data.table(
+      id  = seq_len(nrow(xy)),
+      x1_ = xy$x1_, y1_ = xy$y1_,
+      x2_ = xy$x2_, y2_ = xy$y2_
+    )
+    
+    #expand
+    dt_long <- data.table::rbindlist(list(
+      dt[, .(id, lon = x1_, lat = y1_, seq = 1L)],
+      dt[, .(id, lon = x2_, lat = y2_, seq = 2L)]
+    ))
+    data.table::setorder(dt_long, id, seq)
+    
+    #turn into sfheaders / geos objects
+    lines_geos <- geos::as_geos_geometry( sfheaders::sf_linestring(
+      dt_long, x = "lon", y = "lat", linestring_id = "id") %>%
+        sf::st_set_crs(32612) )
+    
+    #did the line cross a fence?
+    crossed_indices <- vapply(
+      geos::geos_intersects_matrix(lines_geos, barrier_tree),
+      function(x) if (length(x) > 0) x[1] else NA_real_,
+      FUN.VALUE = numeric(1))
+    
+    #if it did, get the attributes of that fence segment.
+    attributes_cross <- roads$TYC_AADT[crossed_indices]
+    
+    #use the lookup table to get kappa estimate from the model
+    #if you used a null model all kappas for a cross would be equal.
+    predictions <- predict_kappa$kappa.hat[
+      match(attributes_cross, predict_kappa$TYC_AADT)]
+    
+    #THIS IS KEY: Apply kappa, multiply by 1 if no crossing to weights.
+    w <- w * ifelse(is.na(predictions), 1, predictions) } #} is end of barrier=T
+  
+  #================================================================
+  #End altered section.
+  #================================================================
+  
   r <- if (!as.rast) {
     xy[sample.int(nrow(xy), size = n.sample, prob = w), ] |>
       dplyr::select(x_ = x2_, y_ = y2_, t2_)
@@ -340,34 +394,18 @@ redistribution_kernel <- function(
       terra::rast(data.frame(xy[, c("x2_", "y2_")], w))
     }
   }
-
+  
   if (as.rast & normalize) {
     r <- normalize(r)
   }
-
+  
   res <- list(
     args = arguments,
     redistribution.kernel = r
-  ) # We could add the timing here and later guess how long the simulation will take
+  )
   class(res) <- c("redistribution_kernel", "list")
   res
 }
-
-# rasterize <- function(xy, w, position, map, max.dist, interpolate = FALSE) {
-#   w <- tibble::tibble(
-#     x = xy$x2_,
-#     y = xy$y2_,
-#     w = w
-#   )
-#   weights <- sf::st_as_sf(w, coords = c("x", "y"))
-#   p <- sf::st_sf(geom = sf::st_sfc(sf::st_point(position))) |>
-#     sf::st_buffer(dist = max.dist)
-#   rr <- raster::crop(raster(map, 1), p)
-#   rr <- raster::rasterize(p, rr)
-#   r1 <- raster::rasterize(weights, rr, field = "w", fun = sum, background = 0)
-#   r1 <- raster::mask(r1, rr)
-#   r1
-# }
 
 normalize <- function(x) {
   x / sum(x[], na.rm = TRUE)
@@ -413,50 +451,57 @@ simulate_path.default <- function(x, ...) {
 #' @param verbose `[logical(1)]{FALSE}` If `TRUE` progress of simulations is displayed.
 #' @export
 #' @rdname simulate_path
-simulate_path.redistribution_kernel <- function(
-  x, n.steps = 100, start = x$args$start, verbose = FALSE, ...) {
 
-  mod <- x$args
+simulate_path.redistribution_kernel <- function(daily=F,
+    x, n.steps = 100, start = x$args$start, verbose = FALSE, ...) {
+  
+  #this includes barrier_tree, kappa, etc.
+  params <- x$args
+  
   xy <- tibble(x_ = rep(NA, n.steps + 1), y_ = NA_real_,
                t_ = start$t_ + start$dt * (0:n.steps), dt = start$dt)
-
+  
   xy$x_[1] <- start$x_
   xy$y_[1] <- start$y_
-
-
+  
+  
   for (i in 1:n.steps) {
-    rk <- redistribution_kernel(
-      x = mod$x,
-      start = start,
-      map = mod$map,
-      fun = mod$fun,
-      max.dist = mod$max.dist,
-      n.control = mod$n.control,
-      n.sample = 1,
-      landscape = mod$landscape,
-      normalize = TRUE,
-      interpolate = FALSE,
-      as.rast = FALSE,
-      tolerance.outside = mod$tolerance.outside
-    )
-
+    
+    #message(i) #added a counter - JS
+    #message(sources(map))
+    
+    #update only the start position for the current step
+    params$start <- start
+    
+    #dynamically call redistribution_kernel with all saved parameters
+    rk <- do.call(redistribution_kernel, params)
+    
     if (is.null(rk)) {
       warning(paste0("Simulation stopped after ", i - 1, " time steps, because the animal stepped out of the landscape."))
       return(xy)
     }
-
+    
     rk <- rk$redistribution.kernel
-
+    
     # Check that we do not have error (i.e., because stepping outside the landscape)
     # Make new start
     new.ta <- atan2(rk$y_[1] - start$y_[1], rk$x_[1] - start$x_[1])
-
+    
     xy$x_[i + 1] <- rk$x_[1]
     xy$y_[i + 1] <- rk$y_[1]
     start <- make_start(
       as.numeric(xy[i + 1, c("x_", "y_")]), new.ta,
       time = xy$t_[i],
       crs = attr(x$args$start, "crs"))
+    
+    if (daily == T){
+    # #finally, define the map for the next iteration - JS
+    SnowTime <- format(round(round(xy$t_[i], units="hour"), units = "days"), "%Y-%m-%d")
+    map <- terra::rast(paste0(simulationstacks,SnowTime,".tif"))
+    }
+    
+    
   }
   return(xy)
 }
+
