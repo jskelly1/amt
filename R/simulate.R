@@ -290,7 +290,8 @@ redistribution_kernel <- function(
     as.rast = FALSE,
     tolerance.outside = 0,
     cross = FALSE,
-    barrier_tree = NULL) {
+    barrier_tree = NULL,
+    predict_kappa = NULL) {
   
   arguments <- as.list(environment())
   checkmate::assert_class(start, "sim_start")
