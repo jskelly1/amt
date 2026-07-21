@@ -290,8 +290,11 @@ redistribution_kernel <- function(
     as.rast = FALSE,
     tolerance.outside = 0,
     cross = FALSE,
-    barrier_tree = NULL,
-    predict_kappa = NULL) {
+    fence = FALSE,
+    roadbarrier_tree = NULL,
+    fencebarrier_tree = NULL,
+    predict_roadkappa = NULL,
+    predict_fencekappa = NULL) {
   
   arguments <- as.list(environment())
   checkmate::assert_class(start, "sim_start")
@@ -334,10 +337,10 @@ redistribution_kernel <- function(
   
   # Extract covariate values
   xy <- fun(xy, map)
-
+  
   #Minor addition, if step is into water, ice, rock, high dens development, or forest drop
   xy <- xy[!is.na(xy$NLCD),]
-  
+
   w <- ssf_weights(xy, x, compensate.movement = compensate.movement)
   
   #================================================================
@@ -367,22 +370,64 @@ redistribution_kernel <- function(
       dt_long, x = "lon", y = "lat", linestring_id = "id") %>%
         sf::st_set_crs(32612) )
     
-    #did the line cross a fence?
+    #did the line cross a road?
     crossed_indices <- vapply(
-      geos::geos_intersects_matrix(lines_geos, barrier_tree),
+      geos::geos_intersects_matrix(lines_geos, roadbarrier_tree),
       function(x) if (length(x) > 0) x[1] else NA_real_,
       FUN.VALUE = numeric(1))
     
-    #if it did, get the attributes of that fence segment.
+    #if it did, get the attributes of that road segment.
     attributes_cross <- roads$TYC_AADT[crossed_indices]
     
     #use the lookup table to get kappa estimate from the model
-    #if you used a null model all kappas for a cross would be equal.
-    predictions <- predict_kappa$kappa.hat[
-      match(attributes_cross, predict_kappa$TYC_AADT)]
+    #if you used a null model all kappas for a cross would be equal (see for fences below)
+    road_predictions <- predict_roadkappa$kappa.hat[
+      match(attributes_cross, predict_roadkappa$TYC_AADT)]
     
-    #THIS IS KEY: Apply kappa, multiply by 1 if no crossing to weights.
-    w <- w * ifelse(is.na(predictions), 1, predictions) } #} is end of barrier=T
+    #all fence runs also include roads (so its nested)
+    if (fence == TRUE){
+      
+      #did the line cross a fence, which one?
+      intersections <- geos::geos_intersects_matrix(lines_geos, fencebarrier_tree)
+      crossing_pairs <- data.frame(
+        line_id = rep(seq_along(intersections), lengths(intersections)),
+        fence_id = unlist(intersections)
+      )
+      
+      first_crossings <- crossing_pairs[!duplicated(crossing_pairs$line_id), ]
+      final_snow_vector <- rep(NA_real_, length(lines_geos))
+      
+      if (nrow(first_crossings) > 0) {
+        
+        crossed_fences_sf <- fencing[first_crossings$fence_id, ]
+        
+        fence_vect     <- terra::vect(crossed_fences_sf )
+        snow <- terra::crop(map$SnowDCIRA,terra::ext(fence_vect))
+        first_crossings$snow_mean <- terra::extract(snow, fence_vect, 
+                                                    fun = 'mean', na.rm = TRUE)[,2]
+        final_snow_vector[first_crossings$line_id] <- first_crossings$snow_mean
+      }
+
+    fence_predictions <- predict_fencekappa$kappa.hat[
+        match(final_snow_vector, predict_fencekappa$SnowDCIRA)]
+    
+    }
+    
+    if (fence == TRUE){
+      
+      #THIS IS KEY: Apply kappa, multiply by 1 if no crossing to weights.
+      #and for fences multiple again
+      w <- w * ifelse(is.na(road_predictions), 1, road_predictions) 
+      w <- w * ifelse(is.na(fence_predictions), 1, fence_predictions) 
+        
+    }else{
+      
+      #if just road crossings, only road multipliers
+      w <- w * ifelse(is.na(road_predictions), 1, road_predictions) 
+      
+    }
+    
+  } #} is end of barrier=T
   
   #================================================================
   #End altered section.
@@ -410,6 +455,7 @@ redistribution_kernel <- function(
   class(res) <- c("redistribution_kernel", "list")
   res
 }
+
 
 normalize <- function(x) {
   x / sum(x[], na.rm = TRUE)
