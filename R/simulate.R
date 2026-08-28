@@ -341,7 +341,7 @@ redistribution_kernel <- function(
 
   #ALTERED
   if (perm == TRUE) {
-    w <- perm_fun(xy=xy,w=w,perm_var = perm_var)
+    w <- perm_fun(xy=xy,w=w,perm_var = perm_var, map = map)
   } #} is end of barrier=T
   #END ALTERED
   
