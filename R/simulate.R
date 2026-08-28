@@ -339,6 +339,10 @@ redistribution_kernel <- function(
 
   w <- ssf_weights(xy, x, compensate.movement = compensate.movement)
 
+  if( all(is.na(w)) ){
+    return(NULL)
+    }
+  
   #ALTERED
   if (perm == TRUE) {
     w <- perm_fun(xy=xy,w=w,perm_var = perm_var, map = map)
