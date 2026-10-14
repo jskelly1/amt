@@ -335,7 +335,7 @@ redistribution_kernel <- function(
   xy <- fun(xy, map)
   
   #Minor addition, if step is into water, ice, rock, high dens development, or forest drop
-  #xy <- xy[!is.na(xy$NLCD),]
+  xy <- xy[!is.na(xy$NLCD),]
 
   w <- ssf_weights(xy, x, compensate.movement = compensate.movement)
 
