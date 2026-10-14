@@ -454,14 +454,15 @@ simulate_path.redistribution_kernel <- function(daily=F, simulationstacks = NULL
     xy$x_[i + 1] <- rk$x_[1]
     xy$y_[i + 1] <- rk$y_[1]
     start <- make_start(
-      as.numeric(xy[i + 1, c("x_", "y_")]), new.ta,
-      time = xy$t_[i],
-      crs = attr(x$args$start, "crs"))
+    #added start$dt to dynamically get the correct fix rate here on 10/14/2026 - JS
+    as.numeric(xy[i + 1, c("x_", "y_")]), new.ta,
+    time = xy$t_[i + 1], dt = start$dt,
+    crs = attr(x$args$start, "crs"))
     
     if (daily == T){
     # #finally, define the map for the next iteration - JS
-    SnowTime <- format(round(round(xy$t_[i], units="hour"), units = "days"), "%Y-%m-%d")
-    map <- terra::rast(paste0(simulationstacks,SnowTime,".tif"))
+    SnowTime <- format(xy$t_[i + 1], "%Y-%m-%d")
+    params$map <- terra::rast(paste0(simulationstacks, SnowTime, ".tif"))
     }
     
     
